@@ -1,5 +1,4 @@
 import streamlit as st
-import tempfile
 import os
 import time
 from google import genai
@@ -10,24 +9,21 @@ st.title("PAM & XSPY Assistant")
 # Initialize Gemini Client (using Streamlit secrets)
 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
-# File uploader in the sidebar
-uploaded_files = st.sidebar.file_uploader(
-    "Upload PAM/XSPY Notes", 
-    type=["pdf", "txt", "docx"], 
-    accept_multiple_files=True
-)
+# Automatically load all notes from the 'notes/' folder on startup
+@st.cache_resource
+def load_notes_payload():
+    payload = []
+    notes_dir = "notes"
+    if os.path.exists(notes_dir):
+        for filename in os.listdir(notes_dir):
+            file_path = os.path.join(notes_dir, filename)
+            if os.path.isfile(file_path):
+                # Upload each file to Gemini's File API automatically
+                gemini_file = client.files.upload(file=file_path)
+                payload.append(gemini_file)
+    return payload
 
-# Process files and hold them in a list/payload if needed
-payload = []
-if uploaded_files:
-    for f in uploaded_files:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.name)[1]) as tmp:
-            tmp.write(f.getvalue())
-            tmp_path = tmp.name
-        
-        gemini_file = client.files.upload(file=tmp_path)
-        payload.append(gemini_file)
-        os.unlink(tmp_path)
+payload = load_notes_payload()
 
 # Initialize chat history in session state
 if "messages" not in st.session_state:
@@ -51,7 +47,6 @@ if prompt := st.chat_input("Ask a question about your PAM/XSPY notes..."):
             answer = ""
             max_retries = 3
             retry_delay = 2
-            
             contents = payload + [prompt] if payload else [prompt]
             
             # Strict system instruction to prevent outside knowledge
@@ -62,7 +57,7 @@ if prompt := st.chat_input("Ask a question about your PAM/XSPY notes..."):
                 "you must reply with: 'I cannot find this information in your uploaded PAM/XSPY notes.' "
                 "Never use general knowledge, internet assumptions, or outside information."
             )
-            
+
             for attempt in range(max_retries):
                 try:
                     response = client.models.generate_content(
@@ -84,7 +79,6 @@ if prompt := st.chat_input("Ask a question about your PAM/XSPY notes..."):
                             continue
                     answer = f"Error generating response: {e}"
                     break
-            
+
             st.markdown(answer)
-            
-    st.session_state.messages.append({"role": "assistant", "content": answer})
+            st.session_state.messages.append({"role": "assistant", "content": answer})
