@@ -51,7 +51,7 @@ if prompt := st.chat_input("Ask a question about your PAM/XSPY notes..."):
                 contents = payload + [prompt] if payload else [prompt]
                 
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash",  # or gemini-2.5-pro
+                    model="gemini-3.8-flash",  # or gemini-2.5-pro
                     contents=contents
                 )
                 answer = response.text
