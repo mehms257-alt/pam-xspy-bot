@@ -3,6 +3,7 @@ import tempfile
 import os
 import time
 from google import genai
+from google.genai import types
 
 st.title("PAM & XSPY Assistant")
 
@@ -44,30 +45,42 @@ if prompt := st.chat_input("Ask a question about your PAM/XSPY notes..."):
         st.markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # Generate response from Gemini with automatic retry for 503 errors
+    # Generate response from Gemini with strict document grounding and retry logic
     with st.chat_message("assistant"):
-        with st.spinner("Thinking... (retrying automatically if busy)"):
+        with st.spinner("Thinking using your notes..."):
             answer = ""
             max_retries = 3
             retry_delay = 2
             
             contents = payload + [prompt] if payload else [prompt]
             
+            # Strict system instruction to prevent outside knowledge
+            strict_system_instruction = (
+                "You are a strict, secure document-grounded assistant for PAM and XSPY notes. "
+                "You must ONLY answer questions using the exact information contained in the uploaded files/documents. "
+                "If no files are uploaded, or if the answer cannot be found inside the uploaded documents, "
+                "you must reply with: 'I cannot find this information in your uploaded PAM/XSPY notes.' "
+                "Never use general knowledge, internet assumptions, or outside information."
+            )
+            
             for attempt in range(max_retries):
                 try:
                     response = client.models.generate_content(
                         model="gemini-3.8-flash",
-                        contents=contents
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            system_instruction=strict_system_instruction,
+                            temperature=0.1,  # Low temperature keeps responses factual and strict to text
+                        )
                     )
                     answer = response.text
                     break
                 except Exception as e:
                     error_msg = str(e)
-                    # If it's a 503 / temporary unavailability, retry
                     if "503" in error_msg or "UNAVAILABLE" in error_msg:
                         if attempt < max_retries - 1:
                             time.sleep(retry_delay)
-                            retry_delay *= 2  # double the wait time for next retry
+                            retry_delay *= 2
                             continue
                     answer = f"Error generating response: {e}"
                     break
