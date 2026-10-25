@@ -61,7 +61,7 @@ if prompt := st.chat_input("Ask a question about your PAM/XSPY notes..."):
             for attempt in range(max_retries):
                 try:
                     response = client.models.generate_content(
-                        model="gemini-flash-latest",
+                        model="gemini-3.5-flash",
                         contents=contents,
                         config=types.GenerateContentConfig(
                             system_instruction=strict_system_instruction,
