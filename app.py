@@ -1,6 +1,7 @@
 import streamlit as st
 import tempfile
 import os
+import time
 from google import genai
 
 st.title("PAM & XSPY Assistant")
@@ -43,20 +44,33 @@ if prompt := st.chat_input("Ask a question about your PAM/XSPY notes..."):
         st.markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # Generate response from Gemini (including uploaded files if available)
+    # Generate response from Gemini with automatic retry for 503 errors
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            try:
-                # Combine uploaded files + user prompt content
-                contents = payload + [prompt] if payload else [prompt]
-                
-                response = client.models.generate_content(
-                    model="gemini-3.8-flash",  # or gemini-2.5-pro
-                    contents=contents
-                )
-                answer = response.text
-            except Exception as e:
-                answer = f"Error generating response: {e}"
+        with st.spinner("Thinking... (retrying automatically if busy)"):
+            answer = ""
+            max_retries = 3
+            retry_delay = 2
+            
+            contents = payload + [prompt] if payload else [prompt]
+            
+            for attempt in range(max_retries):
+                try:
+                    response = client.models.generate_content(
+                        model="gemini-3.8-flash",
+                        contents=contents
+                    )
+                    answer = response.text
+                    break
+                except Exception as e:
+                    error_msg = str(e)
+                    # If it's a 503 / temporary unavailability, retry
+                    if "503" in error_msg or "UNAVAILABLE" in error_msg:
+                        if attempt < max_retries - 1:
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # double the wait time for next retry
+                            continue
+                    answer = f"Error generating response: {e}"
+                    break
             
             st.markdown(answer)
             
